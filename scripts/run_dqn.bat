@@ -1,0 +1,3 @@
+@echo off
+echo Starting DQN Experiment...
+python ..\train.py --experiment DQN --config ..\config.json
