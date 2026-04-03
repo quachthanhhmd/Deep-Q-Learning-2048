@@ -137,7 +137,7 @@ def main():
     # 2. Training Loop
     episode_returns, episode_lengths, loss_history, max_tile_history, illegal_avoided_ratio = [], [], [], [], []
 
-    for episode in tqdm(range(1, NUM_EPISODES + 1), desc=f"Training {exp}"):
+    for episode in tqdm(range(1, NUM_EPISODES + 1), desc=f"Training {EXPERIMENT_TYPE}"):
         obs = train_env.reset(seed=SEED + episode)
         done, ep_return, ep_len, legal_count, max_tile_ep = False, 0.0, 0, 0, 0
         
@@ -180,11 +180,29 @@ def main():
         max_tile_history.append(max_tile_ep)
         illegal_avoided_ratio.append(legal_count / ep_len if ep_len > 0 else 1.0)
 
+        # 2a. Periodic Logging
+        log_interval = 100
+        if NUM_EPISODES <= 20: 
+            log_interval = 2 # Show more logs in debug mode
+            
+        if episode % log_interval == 0:
+            avg_return = np.mean(episode_returns[-log_interval:])
+            avg_max_tile = np.mean(max_tile_history[-log_interval:])
+            avg_loss = np.mean(loss_history[-log_interval:]) if len(loss_history) >= log_interval else (np.mean(loss_history) if loss_history else 0)
+            avg_legal = np.mean(illegal_avoided_ratio[-log_interval:])
+            print(f"Episode {episode:5d}/{NUM_EPISODES} | "
+                  f"Return: {avg_return:7.1f} | "
+                  f"Max Tile: {avg_max_tile:5.1f} | "
+                  f"Loss: {avg_loss:8.4f} | "
+                  f"Legal%: {avg_legal * 100:5.1f}% | "
+                  f"Steps: {global_step:7d} | "
+                  f"Eps: {eps:.3f}")
+
     print("Training complete.")
 
     # 3. Final Evaluation
     mean_r, std_r, mean_tile = evaluate_model(q_net, type(train_env), num_seeds=10, device=DEVICE)
-    print(f"[{exp}] 10-seed eval: Mean Return = {mean_r:.1f} ± {std_r:.1f}, Mean Max Tile = {mean_tile:.1f}")
+    print(f"[{EXPERIMENT_TYPE}] 10-seed eval: Mean Return = {mean_r:.1f} ± {std_r:.1f}, Mean Max Tile = {mean_tile:.1f}")
 
     # 4. Plots
     plt.figure(figsize=(20, 4))
@@ -193,7 +211,7 @@ def main():
     plt.plot(episode_returns, alpha=0.35, label="episode return")
     ma = moving_average(episode_returns, 20)
     plt.plot(range(len(ma)), ma, label="moving avg (20)")
-    plt.title(f"{exp} Training Returns")
+    plt.title(f"{EXPERIMENT_TYPE} Training Returns")
     plt.xlabel("Episode")
     plt.ylabel("Return")
     plt.legend()
@@ -201,17 +219,17 @@ def main():
     plt.subplot(1, 4, 2)
     log2_tiles = [np.log2(t + 1) for t in max_tile_history]
     plt.plot(log2_tiles)
-    plt.title(f"{exp} Max Tile (log2)")
+    plt.title(f"{EXPERIMENT_TYPE} Max Tile (log2)")
     plt.xlabel("Episode")
     
     plt.subplot(1, 4, 3)
     plt.plot(loss_history, alpha=0.8)
-    plt.title(f"{exp} Loss")
+    plt.title(f"{EXPERIMENT_TYPE} Loss")
     plt.xlabel("Update Step")
     
     plt.subplot(1, 4, 4)
     plt.plot(illegal_avoided_ratio)
-    plt.title(f"{exp} Illegal Avoidance")
+    plt.title(f"{EXPERIMENT_TYPE} Illegal Avoidance")
     plt.xlabel("Episode")
 
     plt.tight_layout()
