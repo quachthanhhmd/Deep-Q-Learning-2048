@@ -189,7 +189,6 @@ def main():
         log_interval = 100
         if NUM_EPISODES <= 20: 
             log_interval = 2 # Show more logs in debug mode
-            
         if episode % log_interval == 0:
             avg_return = np.mean(episode_returns[-log_interval:])
             avg_max_tile = np.mean(max_tile_history[-log_interval:])
@@ -202,8 +201,14 @@ def main():
                   f"Legal%: {avg_legal * 100:5.1f}% | "
                   f"Steps: {global_step:7d} | "
                   f"Eps: {eps:.3f}")
+            
+            # Save checkpoint
+            torch.save(q_net.state_dict(), f"{EXPERIMENT_TYPE}_checkpoint.pth")
 
     print("Training complete.")
+    # Save final model
+    torch.save(q_net.state_dict(), f"{EXPERIMENT_TYPE}_model_final.pth")
+    print(f"Final model saved to {EXPERIMENT_TYPE}_model_final.pth")
 
     # 3. Final Evaluation
     mean_r, std_r, mean_tile = evaluate_model(q_net, type(train_env), num_seeds=10, device=DEVICE)

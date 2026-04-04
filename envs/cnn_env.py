@@ -84,16 +84,18 @@ class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
             next_max = np.max(board)
             next_empty = np.sum(board == 0)
             
-            # 3. Exact Reference Reward Logic:
+            # 3. Exact Reference Reward Logic (Fixed for OpenSpiel):
             # reward = log(next_max, 2) * 0.1 IF next_max > prev_max ELSE 0
             if next_max > prev_max:
                 shaped_reward = math.log2(next_max) * 0.1
             else:
                 shaped_reward = 0.0
             
-            # reward += (empty_after - empty_before)
-            # This represents the number of merges occurred in this step
-            shaped_reward += (next_empty - prev_empty)
+            # reward += (next_empty - prev_empty + 1)
+            # In OpenSpiel, super().step() adds a new tile before returning.
+            # We add 1 back to accurately reflect the number of merges.
+            num_merges = (next_empty - prev_empty + 1)
+            shaped_reward += num_merges
 
         info['raw_reward_unshaped'] = raw_reward
         return next_obs, float(shaped_reward), done, info
