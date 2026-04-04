@@ -1,6 +1,6 @@
 {
     "seed": 7,
-    "num_episodes": 5000,
+    "num_episodes": 10000,
     "buffer_size": 100000,
     "batch_size": 128,
     "gamma": 0.99,

@@ -9,8 +9,8 @@ The modifications were executed to tackle premature convergence (getting stuck a
 ```mermaid
 flowchart TD
     A[2048 Game Board 4x4] -->|Extract State| B[One-Hot Representation\nShape: 16x4x4]
-    B -->|Input| C(Conv2d Layers\n128 Filters, 3x3, Pad=1)
-    C -->|Feature Map 128x4x4| D(Flatten to 2048 features)
+    B -->|7 Parallel Branches| C(Multi-Branch Convolutions\n1x2, 2x1, 1x3, 3x1, 1x4, 4x1, 2x2)
+    C -->|Concatenated Feature Maps| D(Flatten to 3648 features)
     D --> E(Dense / FC Layers)
     E --> F[Q-Values\nUp, Down, Left, Right]
     F -->|Epsilon-Greedy Action| A
@@ -20,12 +20,12 @@ flowchart TD
 
 ## Summary of Changes
 
-### 1. Expanded Receptive Field (`models/cnn_q_network.py`)
-- **Problem**: The original model used two layers of `2x2` convolutions with `padding=0`, shrinking the `4x4` input feature map down to `2x2`. As a result, the receptive field did not span the entire board, preventing the model from capturing spatial relationships between opposite corners.
+### 1. Multi-Branch Convolution (Tuple Network) (`models/cnn_q_network.py`)
+- **Problem**: The original model used standard `3x3` and `2x2` convolutions, which inherently struggle to capture the row/col sliding mechanics of 2048 since tiles can merge from across the entire board. This limited the logical comprehension of the network, causing a convergence barrier around the 256.0 Max Tile mark.
 - **Solution**: 
-  - Upgraded kernel sizes to `3x3` and introduced `padding=1`. 
-  - This preserves the full `4x4` spatial dimension across multiple convolutional layers, ensuring that every chunk of the board can cross-communicate before being flattened. 
-  - Adjusted the subsequent fully-connected (Dense) layer to accept linearly flattened size `128 * 4 * 4 = 2048`.
+  - Overhauled the core structure to employ **7 parallel convolution branches** specifically mirroring 2048 tuple geometries.
+  - Implemented asymmetrical kernels: `1x2`, `2x1`, `1x3`, `3x1`, `1x4` (full row), `4x1` (full col), and `2x2`.
+  - Feature maps from all 7 distinct branches are concatenated into a massive `3648` dimensional representation before passing into the Dense layers, granting the model robust spatial awareness.
 
 ### 2. Reduced Noise in Reward Shaping (`envs/cnn_env.py`)
 - **Problem**: A dense shaping reward of `empty_spots * 1.0` heavily distracted the agent, prioritizing keeping tiles empty over creating larger values (which is the actual path to higher scores). Additionally, `np.log2(board)` sometimes triggered `RuntimeWarning: divide by zero` due to evaluating `0` values prematurely.
