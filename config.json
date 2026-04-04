@@ -1,6 +1,6 @@
 {
     "seed": 7,
-    "num_episodes": 3000,
+    "num_episodes": 5000,
     "buffer_size": 100000,
     "batch_size": 128,
     "gamma": 0.99,
@@ -10,7 +10,7 @@
     "learn_every": 4,
     "eps_start": 1.0,
     "eps_end": 0.05,
-    "eps_decay_steps": 200000,
+    "eps_decay_steps": 20000,
     "max_steps_per_episode": 5000,
     "grad_clip": 10.0
 }

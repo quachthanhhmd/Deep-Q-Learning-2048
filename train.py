@@ -12,14 +12,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# Import modular components
-from envs import OpenSpiel2048Env, OpenSpiel2048EnvShaped
-from models import QNetwork, DuelingQNetwork, DuelingCNNQNetwork
+from envs import OpenSpiel2048Env, OpenSpiel2048EnvShaped, OpenSpiel2048EnvCNNShaped
+from models import QNetwork, DuelingQNetwork, DuelingCNNQNetwork, CNNQNetwork
 from utils import (ReplayBuffer, make_legal_mask, select_action_with_tracking, evaluate_model)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train 2048 RL Agents")
-    parser.add_argument("--experiment", type=str, default="dqn", choices=["dqn", "ddqn", "dddqn", "d3qn"],
+    parser.add_argument("--experiment", type=str, default="dqn", choices=["dqn", "ddqn", "dddqn", "d3qn", "cnn_ddqn"],
                         help="Choose which experiment to run")
     parser.add_argument("--config", type=str, default="config.json",
                         help="Path to hyperparameters JSON config file")
@@ -65,12 +64,18 @@ def main():
     torch.manual_seed(SEED)
 
     # 1. Initialize Environment and Architecture
-    if EXPERIMENT_TYPE == "d3qn":
-        # Group 2: Enhanced Model
-        train_env = OpenSpiel2048EnvShaped(seed=SEED)
-        obs_dim = 16 * 4 * 4  # 256 for Group 2
-        num_actions = train_env.num_actions
-        q_net = DuelingCNNQNetwork(num_actions, in_channels=16).to(DEVICE)
+    if EXPERIMENT_TYPE in ["d3qn", "cnn_ddqn"]:
+        # Group 2: Enhanced Model with categorical / spatial features
+        if EXPERIMENT_TYPE == "d3qn":
+            train_env = OpenSpiel2048EnvShaped(seed=SEED)
+            obs_dim = 16 * 4 * 4  # 256
+            num_actions = train_env.num_actions
+            q_net = DuelingCNNQNetwork(num_actions, in_channels=16).to(DEVICE)
+        else: # cnn_ddqn
+            train_env = OpenSpiel2048EnvCNNShaped(seed=SEED)
+            obs_dim = 16 * 4 * 4  # 256
+            num_actions = train_env.num_actions
+            q_net = CNNQNetwork(num_actions, in_channels=16).to(DEVICE)
     else:
         # Group 1: Ablation (dqn, ddqn, dddqn)
         train_env = OpenSpiel2048Env(seed=SEED)
@@ -111,7 +116,7 @@ def main():
         q_sa = q_values.gather(1, actions).squeeze(1)
 
         with torch.no_grad():
-            if EXPERIMENT_TYPE in ["ddqn", "dddqn", "d3qn"]:
+            if EXPERIMENT_TYPE in ["ddqn", "dddqn", "d3qn", "cnn_ddqn"]:
                 # Double Q learning loop
                 next_q_online = q_net(next_obs)
                 next_q_online = next_q_online.masked_fill(~next_legal_mask.to(torch.bool), -1e9)
