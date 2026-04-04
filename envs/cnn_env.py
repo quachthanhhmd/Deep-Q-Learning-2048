@@ -69,34 +69,33 @@ class OpenSpiel2048EnvCNN(OpenSpiel2048Env):
 
 class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
     def step(self, action):
+        # 1. Capture previous board state for reward calculation
+        # Reference model uses (empty2 - empty1) and (next_max > prev_max)
+        prev_board = parse_board_numbers(self.state)
+        prev_max = np.max(prev_board) if prev_board is not None else 0
+        prev_empty = np.sum(prev_board == 0) if prev_board is not None else 0
+
+        # 2. Execute original step
         next_obs, raw_reward, done, info = super().step(action)
         board = info.get('board')
         
         shaped_reward = 0.0
         if board is not None:
-            # 1. Base log reward
-            if raw_reward > 0:
-                shaped_reward += math.log2(raw_reward + 1)
+            next_max = np.max(board)
+            next_empty = np.sum(board == 0)
             
-            # 2. Empty spots reward
-            empty_spots = np.sum(board == 0)
-            shaped_reward += empty_spots * 0.1  
+            # 3. Exact Reference Reward Logic:
+            # reward = log(next_max, 2) * 0.1 IF next_max > prev_max ELSE 0
+            if next_max > prev_max:
+                shaped_reward = math.log2(next_max) * 0.1
+            else:
+                shaped_reward = 0.0
             
-            # 3. Corner reward
-            max_val = np.max(board)
-            if board[3, 3] == max_val:
-                shaped_reward += 5.0
-                
-            # 4. Monotonicity
-            weights = np.array([
-                [0.1, 0.2, 0.3, 0.4],
-                [0.2, 0.4, 0.6, 0.8],
-                [0.3, 0.6, 1.0, 1.5],
-                [0.4, 0.8, 1.5, 3.0]
-            ])
-            # Avoid RuntimeWarning by replacing 0 with 1 before log2 (log2(1) = 0 anyway)
-            log_board = np.where(board > 0, np.log2(np.maximum(board, 1)), 0)
-            shaped_reward += np.sum(log_board * weights) * 0.1
+            # reward += (empty_after - empty_before)
+            # This represents the number of merges occurred in this step
+            shaped_reward += (next_empty - prev_empty)
 
         info['raw_reward_unshaped'] = raw_reward
         return next_obs, float(shaped_reward), done, info
+
+
