@@ -69,8 +69,7 @@ class OpenSpiel2048EnvCNN(OpenSpiel2048Env):
 
 class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
     def step(self, action):
-        # 1. Capture previous board state for reward calculation
-        # Reference model uses (empty2 - empty1) and (next_max > prev_max)
+        # 1. Capture previous board state
         prev_board = parse_board_numbers(self.state)
         prev_max = np.max(prev_board) if prev_board is not None else 0
         prev_empty = np.sum(prev_board == 0) if prev_board is not None else 0
@@ -78,24 +77,30 @@ class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
         # 2. Execute original step
         next_obs, raw_reward, done, info = super().step(action)
         board = info.get('board')
-        
+
         shaped_reward = 0.0
         if board is not None:
             next_max = np.max(board)
             next_empty = np.sum(board == 0)
-            
-            # 3. Exact Reference Reward Logic (Fixed for OpenSpiel):
-            # reward = log(next_max, 2) * 0.1 IF next_max > prev_max ELSE 0
+
+            # --- Dense merge reward (log-scaled raw score delta) ---
+            # raw_reward is the actual score delta from the game engine
+            # (sum of merged tile values). Log-scale prevents high-value
+            # merges from dominating and drowning out smaller merge signals.
+            if raw_reward > 0:
+                shaped_reward += math.log1p(raw_reward) * 0.25
+
+            # --- New max tile bonus ---
+            # Extra incentive when the agent reaches a new personal best tile.
+            # Scaled by log2 so 1024 is rewarded more than 512, etc.
             if next_max > prev_max:
-                shaped_reward = math.log2(next_max) * 0.1
-            else:
-                shaped_reward = 0.0
-            
-            # reward += (next_empty - prev_empty + 1)
-            # In OpenSpiel, super().step() adds a new tile before returning.
-            # We add 1 back to accurately reflect the number of merges.
-            num_merges = (next_empty - prev_empty + 1)
-            shaped_reward += num_merges
+                shaped_reward += math.log2(next_max) * 0.3
+
+            # --- Empty tile bonus ---
+            # More empty cells = more future merge opportunities.
+            # In OpenSpiel, a new tile is added after the move (+1 correction).
+            empty_delta = (next_empty - prev_empty + 1)
+            shaped_reward += empty_delta * 0.1
 
         info['raw_reward_unshaped'] = raw_reward
         return next_obs, float(shaped_reward), done, info
