@@ -97,8 +97,19 @@ def main():
     if args.checkpoint:
         if os.path.isfile(args.checkpoint):
             print(f"Loading checkpoint: {args.checkpoint}")
-            q_net.load_state_dict(torch.load(args.checkpoint, map_location=DEVICE))
+            try:
+                state_dict = torch.load(args.checkpoint, map_location=DEVICE, weights_only=True)
+            except TypeError:
+                # Fallback for older PyTorch versions that don't support weights_only
+                state_dict = torch.load(args.checkpoint, map_location=DEVICE)
+            q_net.load_state_dict(state_dict)
             print("Checkpoint loaded successfully.")
+            total_params = 0
+            for name, param in state_dict.items():
+                num = param.numel()
+                total_params += num
+                print(f"  {name:45s} | shape: {str(list(param.shape)):20s} | {num:>9,} params | {param.dtype}")
+            print(f"  {'TOTAL':45s} | {total_params:>9,} params")
         else:
             print(f"WARNING: Checkpoint file not found: {args.checkpoint}, starting from scratch.")
 

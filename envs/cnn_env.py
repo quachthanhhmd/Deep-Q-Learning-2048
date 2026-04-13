@@ -69,30 +69,55 @@ class OpenSpiel2048EnvCNN(OpenSpiel2048Env):
 
 class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
     def step(self, action):
-        # 1. Capture previous board state
+        # --- 1. Evaluate OLD state (Before taking the move) ---
         prev_board = parse_board_numbers(self.state)
-        prev_max = np.max(prev_board) if prev_board is not None else 0
         prev_empty = np.sum(prev_board == 0) if prev_board is not None else 0
+        
+        # Monotonicity weight matrix (guiding largest tiles to bottom-right)
+        weights = np.array([
+            [0.1, 0.2, 0.3, 0.4],
+            [0.2, 0.4, 0.6, 0.8],
+            [0.3, 0.6, 1.0, 1.5],
+            [0.4, 0.8, 1.5, 3.0]
+        ])
+        
+        def calc_potential(b):
+            """Calculates the absolute strategic value (Potential Phi) of a board."""
+            if b is None: return 0.0
+            p = 0.0
+            # Corner bonus
+            if b[3, 3] == np.max(b):
+                p += 5.0
+            # Monotonicity bonus
+            log_b = np.where(b > 0, np.log2(np.maximum(b, 1)), 0)
+            p += np.sum(log_b * weights) * 0.1
+            return p
 
-        # 2. Execute original step
+        prev_potential = calc_potential(prev_board)
+
+        # --- 2. Execute the move ---
         next_obs, raw_reward, done, info = super().step(action)
         board = info.get('board')
-
+        
+        # --- 3. Calculate Corrected Delta Reward ---
         shaped_reward = 0.0
         if board is not None:
-            next_max = np.max(board)
+            # A. Base log reward for actual merges (delta score)
+            if raw_reward > 0:
+                shaped_reward += math.log2(raw_reward + 1)
+            
+            # B. Empty spots delta
+            # We want to reward gaining empty spots (merging).
+            # OpenSpiel automatically adds a new tile after a move, so we add 1 back to correct it.
             next_empty = np.sum(board == 0)
-
-            # --- New max tile bonus (secondary signal) ---
-            # Matches reference: log2(next_max) * 0.1 when a new record tile appears
-            if next_max > prev_max:
-                shaped_reward += math.log2(next_max) * 0.1
-
-            # --- Merge count reward (PRIMARY signal, weight 1.0) ---
-            # This is the key insight from the reference notebook:
-            # Number of merges = empty cells gained. This is the dominant reward.
-            # In OpenSpiel, a new tile is added after the move, so +1 corrects for that.
-            shaped_reward += (next_empty - prev_empty + 1)
+            shaped_reward += (next_empty - prev_empty + 1) * 0.1  
+            
+            # C. Potential Difference (Theory of Reward Shaping)
+            # Reward = gamma * New_Potential - Old_Potential
+            # This ensures the agent is only rewarded for PROGRESS, not for idling.
+            next_potential = calc_potential(board)
+            GAMMA = 0.9  # Same discount factor defined in config.json
+            shaped_reward += (GAMMA * next_potential - prev_potential)
 
         info['raw_reward_unshaped'] = raw_reward
         return next_obs, float(shaped_reward), done, info
