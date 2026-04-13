@@ -202,6 +202,9 @@ def main():
                   f"Steps: {global_step:7d} | "
                   f"Eps: {eps:.3f}")
             
+            # Print the final board of this episode
+            train_env.render()
+            
             # Save checkpoint
             torch.save(q_net.state_dict(), f"{EXPERIMENT_TYPE}_checkpoint.pth")
 

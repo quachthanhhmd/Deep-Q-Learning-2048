@@ -83,24 +83,16 @@ class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
             next_max = np.max(board)
             next_empty = np.sum(board == 0)
 
-            # --- Dense merge reward (log-scaled raw score delta) ---
-            # raw_reward is the actual score delta from the game engine
-            # (sum of merged tile values). Log-scale prevents high-value
-            # merges from dominating and drowning out smaller merge signals.
-            if raw_reward > 0:
-                shaped_reward += math.log1p(raw_reward) * 0.25
-
-            # --- New max tile bonus ---
-            # Extra incentive when the agent reaches a new personal best tile.
-            # Scaled by log2 so 1024 is rewarded more than 512, etc.
+            # --- New max tile bonus (secondary signal) ---
+            # Matches reference: log2(next_max) * 0.1 when a new record tile appears
             if next_max > prev_max:
-                shaped_reward += math.log2(next_max) * 0.3
+                shaped_reward += math.log2(next_max) * 0.1
 
-            # --- Empty tile bonus ---
-            # More empty cells = more future merge opportunities.
-            # In OpenSpiel, a new tile is added after the move (+1 correction).
-            empty_delta = (next_empty - prev_empty + 1)
-            shaped_reward += empty_delta * 0.1
+            # --- Merge count reward (PRIMARY signal, weight 1.0) ---
+            # This is the key insight from the reference notebook:
+            # Number of merges = empty cells gained. This is the dominant reward.
+            # In OpenSpiel, a new tile is added after the move, so +1 corrects for that.
+            shaped_reward += (next_empty - prev_empty + 1)
 
         info['raw_reward_unshaped'] = raw_reward
         return next_obs, float(shaped_reward), done, info
