@@ -22,6 +22,8 @@ def parse_args():
                         help="Choose which experiment to run")
     parser.add_argument("--config", type=str, default="config.json",
                         help="Path to hyperparameters JSON config file")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Path to a .pth checkpoint file to resume training from")
     return parser.parse_args()
 
 def load_config(config_path):
@@ -90,6 +92,15 @@ def main():
     print(f"Environment initialized: type={type(train_env).__name__}")
     print(f"Observation dimension: {obs_dim}")
     print(f"Number of actions: {num_actions}")
+
+    # Load checkpoint if provided
+    if args.checkpoint:
+        if os.path.isfile(args.checkpoint):
+            print(f"Loading checkpoint: {args.checkpoint}")
+            q_net.load_state_dict(torch.load(args.checkpoint, map_location=DEVICE))
+            print("Checkpoint loaded successfully.")
+        else:
+            print(f"WARNING: Checkpoint file not found: {args.checkpoint}, starting from scratch.")
 
     target_net = copy.deepcopy(q_net).to(DEVICE)
     target_net.eval()
