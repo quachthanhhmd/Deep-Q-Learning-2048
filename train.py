@@ -94,7 +94,8 @@ def main():
     target_net = copy.deepcopy(q_net).to(DEVICE)
     target_net.eval()
 
-    optimizer = optim.Adam(q_net.parameters(), lr=LR)
+    optimizer = optim.RMSprop(q_net.parameters(), lr=LR)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.90)
     replay = ReplayBuffer(BUFFER_SIZE)
     global_step = 0
 
@@ -132,11 +133,12 @@ def main():
             next_max_q = torch.where(dones > 0.5, torch.zeros_like(next_max_q), next_max_q)
             target = rewards + GAMMA * next_max_q
 
-        loss = F.mse_loss(q_sa, target)
+        loss = F.smooth_l1_loss(q_sa, target)
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(q_net.parameters(), GRAD_CLIP)
         optimizer.step()
+        scheduler.step()
         return float(loss.item())
 
     # 2. Training Loop
