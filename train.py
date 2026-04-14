@@ -241,15 +241,33 @@ def main():
                 next_val, torch.tensor([done], device=DEVICE), GAMMA, GAE_LAMBDA
             )
             
+            # --- Advanced Advantage Regularization (reference ml2048 style) ---
+            # 1. Normalize with 3*std for better range coverage
+            adv_std = b_adv.std() + 1e-8
+            mb_adv = b_adv / (adv_std * 3.0)
+            
+            # 2. tanh-sqrt stabilization
+            # adv = tanh(adv) * sqrt(abs(adv) + 0.69)
+            mb_adv = torch.tanh(mb_adv) * torch.sqrt(torch.abs(mb_adv) + 0.6917418778812134)
+            
+            # LR Decay
+            frac = 1.0 - (episode_count / NUM_EPISODES)
+            lr_now = config.get("ppo_lr", 3e-4) * frac
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr_now
+
             for _ in range(PPO_EPOCHS):
                 _, new_lp, entropy, new_val = model.get_action_and_value(b_obs, b_act, b_msk)
                 ratio = (new_lp - b_lp).exp()
-                mb_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
+                
                 pg_loss1 = -mb_adv * ratio
                 pg_loss2 = -mb_adv * torch.clamp(ratio, 1 - PPO_CLIP, 1 + PPO_CLIP)
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                
                 v_loss = 0.5 * F.smooth_l1_loss(new_val.flatten(), b_ret)
+                
                 loss = pg_loss - PPO_ENTROPY_COEF * entropy.mean() + v_loss * PPO_CRITIC_COEF
+                
                 optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)

@@ -44,9 +44,22 @@ class PPOActorCriticNetwork(nn.Module):
 
     def get_action_and_value(self, x, action=None, valid_actions_mask=None):
         logits, value = self.forward(x, valid_actions_mask)
+        
+        # Use Categorical distribution on masked logits
         probs = torch.distributions.Categorical(logits=logits)
         
         if action is None:
             action = probs.sample()
             
-        return action, probs.log_prob(action), probs.entropy(), value
+        # Safer entropy calculation for masked actions
+        if valid_actions_mask is not None:
+            min_real = torch.finfo(logits.dtype).min
+            # Categorical(logits=...).entropy() handles renormalization, 
+            # but we want to be extra safe with the sum
+            log_p = torch.log_softmax(logits, dim=-1)
+            p = torch.exp(log_p)
+            entropy = -torch.sum(p * log_p, dim=-1)
+        else:
+            entropy = probs.entropy()
+            
+        return action, probs.log_prob(action), entropy, value
