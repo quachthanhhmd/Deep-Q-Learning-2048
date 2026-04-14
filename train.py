@@ -136,12 +136,12 @@ def main():
 
         def get_dqn_loss(batch):
             states, actions, rewards, next_states, dones, masks, next_masks = batch
-            states = torch.tensor(states, dtype=torch.float32, device=DEVICE)
-            actions = torch.tensor(actions, dtype=torch.long, device=DEVICE)
-            rewards = torch.tensor(rewards, dtype=torch.float32, device=DEVICE)
-            next_states = torch.tensor(next_states, dtype=torch.float32, device=DEVICE)
-            dones = torch.tensor(dones, dtype=torch.float32, device=DEVICE)
-            next_masks = torch.tensor(next_masks, dtype=torch.float32, device=DEVICE)
+            states = torch.tensor(np.array(states), dtype=torch.float32, device=DEVICE)
+            actions = torch.tensor(np.array(actions), dtype=torch.long, device=DEVICE)
+            rewards = torch.tensor(np.array(rewards), dtype=torch.float32, device=DEVICE)
+            next_states = torch.tensor(np.array(next_states), dtype=torch.float32, device=DEVICE)
+            dones = torch.tensor(np.array(dones), dtype=torch.float32, device=DEVICE)
+            next_masks = torch.tensor(np.array(next_masks), dtype=torch.float32, device=DEVICE)
 
             current_q = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
             
