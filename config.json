@@ -12,5 +12,13 @@
     "eps_end": 0.05,
     "eps_decay_steps": 200000,
     "max_steps_per_episode": 5000,
-    "grad_clip": 10.0
+    "grad_clip": 10.0,
+    
+    "ppo_lr": 0.0003,
+    "ppo_epochs": 4,
+    "ppo_clip": 0.2,
+    "ppo_entropy_coef": 0.01,
+    "ppo_vf_coef": 0.5,
+    "ppo_steps": 1024,
+    "gae_lambda": 0.95
 }

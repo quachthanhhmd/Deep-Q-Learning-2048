@@ -13,7 +13,12 @@ def masked_greedy_action(q_net, obs, legal_actions_list, num_actions, epsilon=0.
         return random.choice(legal_actions_list)
 
     obs_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
-    q = q_net(obs_t).squeeze(0)
+    
+    out = q_net(obs_t)
+    if isinstance(out, tuple):
+        q = out[0].squeeze(0) # PPO returns (logits, value)
+    else:
+        q = out.squeeze(0) # DQN returns q_values
 
     legal_mask = torch.zeros(num_actions, dtype=torch.bool, device=device)
     legal_mask[legal_actions_list] = True
