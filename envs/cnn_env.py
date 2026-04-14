@@ -85,12 +85,21 @@ class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
             """Calculates the absolute strategic value (Potential Phi) of a board."""
             if b is None: return 0.0
             p = 0.0
-            # Corner bonus
-            if b[3, 3] == np.max(b):
-                p += 5.0
-            # Monotonicity bonus
+            
+            max_val = np.max(b)
+            if max_val > 0:
+                # 1. DYNAMIC CORNER BONUS (Crucial for 1000-epoch runs)
+                # Instead of +5.0 flat, we scale it by the log of the max tile.
+                # If a 1024 tile is in the corner, Potential = 10 * 10.0 = 100.0
+                # If it moves OUT of the corner, the agent suffers a massive -100 penalty instantly.
+                if b[3, 3] == max_val:
+                    p += math.log2(max_val) * 10.0
+            
+            # 2. STRONGER MONOTONICITY
+            # Increased weight from 0.1 to 1.0 to force snake-like arrangement quickly
             log_b = np.where(b > 0, np.log2(np.maximum(b, 1)), 0)
-            p += np.sum(log_b * weights) * 0.1
+            p += np.sum(log_b * weights) * 1.0
+            
             return p
 
         prev_potential = calc_potential(prev_board)
@@ -104,19 +113,16 @@ class OpenSpiel2048EnvCNNShaped(OpenSpiel2048EnvCNN):
         if board is not None:
             # A. Base log reward for actual merges (delta score)
             if raw_reward > 0:
-                shaped_reward += math.log2(raw_reward + 1)
+                # Scaled up slightly to keep up with the new huge potential changes
+                shaped_reward += math.log2(raw_reward + 1) * 2.0
             
-            # B. Empty spots delta
-            # We want to reward gaining empty spots (merging).
-            # OpenSpiel automatically adds a new tile after a move, so we add 1 back to correct it.
+            # B. Empty spots delta (reward merging)
             next_empty = np.sum(board == 0)
-            shaped_reward += (next_empty - prev_empty + 1) * 0.1  
+            shaped_reward += (next_empty - prev_empty + 1) * 0.5  
             
             # C. Potential Difference (Theory of Reward Shaping)
-            # Reward = gamma * New_Potential - Old_Potential
-            # This ensures the agent is only rewarded for PROGRESS, not for idling.
             next_potential = calc_potential(board)
-            GAMMA = 0.9  # Same discount factor defined in config.json
+            GAMMA = 0.9  
             shaped_reward += (GAMMA * next_potential - prev_potential)
 
         info['raw_reward_unshaped'] = raw_reward
