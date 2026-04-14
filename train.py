@@ -15,6 +15,13 @@ import torch.optim as optim
 from utils import (ReplayBuffer, make_legal_mask, select_action_with_tracking, evaluate_model, run_comprehensive_eval, generate_evaluation_report)
 from utils.ppo_utils import PPORolloutBuffer
 
+# Import modular components
+from envs import OpenSpiel2048Env, OpenSpiel2048EnvShaped
+from envs.refined_env import Refined2048Env
+from models import QNetwork, DuelingQNetwork, DuelingCNNQNetwork
+from models.q_network import RefinedCNNQNetwork
+from models.ppo_network import PPOActorCriticNetwork
+
 def parse_args():
     parser = argparse.ArgumentParser(description="2048 Ablation Study")
     parser.add_argument("--experiment", type=str, default="dqn_base", 
