@@ -42,6 +42,9 @@ def main():
     EXPERIMENT_TYPE = args.experiment.lower()
 
     # Extract Config
+    config_name = os.path.splitext(os.path.basename(args.config))[0]
+    full_exp_name = f"{config_name}_{EXPERIMENT_TYPE}"
+    
     SEED = config["seed"]
     NUM_EPISODES = config["num_episodes"]
     BUFFER_SIZE = config["buffer_size"]
@@ -260,15 +263,32 @@ def main():
     else:
         run_ppo_training()
 
-    save_results(EXPERIMENT_TYPE, model)
+    save_results(full_exp_name, model)
     
     # --- Final Evaluation (1000 games) ---
     eval_games = 1000
     if NUM_EPISODES <= 20: eval_games = 5
     print(f"\n--- Starting Final Evaluation ({eval_games} games) ---")
     eval_results = run_comprehensive_eval(model, type(train_env), num_episodes=eval_games, device=DEVICE)
-    generate_evaluation_report(eval_results, EXPERIMENT_TYPE)
-    print(f"Mean Score: {np.mean(eval_results['returns']):.1f}, Best: {np.max(eval_results['returns']):.0f}")
+    generate_evaluation_report(eval_results, full_exp_name)
+    # Final Summary Print to Terminal
+    res_returns = np.array(eval_results["returns"])
+    res_max_tiles = np.array(eval_results["max_tiles"])
+    res_steps = np.array(eval_results["steps"])
+    milestones = [128, 256, 512, 1024, 2048]
+    
+    print(f"\n" + "="*50)
+    print(f" FINAL ABLATION REPORT: {EXPERIMENT_TYPE.upper()} ")
+    print("="*50)
+    print(f"Score:      {np.mean(res_returns):.1f} ± {np.std(res_returns):.1f} (Best: {np.max(res_returns):.0f})")
+    print(f"Steps:      {np.mean(res_steps):.1f} steps/game (Max: {np.max(res_steps)})")
+    print(f"Max Tile:   {np.max(res_max_tiles)}")
+    print("-" * 30)
+    print("Tile Reach Rates:")
+    for m in milestones:
+        rate = np.mean(res_max_tiles >= m) * 100
+        print(f"  >= {m:5}: {rate:6.2f}%")
+    print("="*50 + "\n")
 
 if __name__ == "__main__":
     main()
