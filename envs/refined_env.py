@@ -61,7 +61,7 @@ class Refined2048Env(OpenSpiel2048Env):
         # Potential-based Corner Bonus
         if self.reward_type == "corner":
             bonus = 0
-            factor = 4.0 # Scaling factor for the bonus
+            factor = 64.0 # Scaling factor for the bonus (increased per research)
             
             curr_board = parse_board_numbers(self.state) if not done else None
             
