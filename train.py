@@ -191,7 +191,14 @@ def main():
 
     def run_ppo_training():
         nonlocal global_step
-        optimizer = optim.Adam(model.parameters(), lr=config.get("ppo_lr", 3e-4), eps=1e-5)
+        actor_lr = config.get("ppo_lr", 3e-4) # Base LR
+        critic_lr = actor_lr * 2.5 # Decoupled Critic LR per ml2048
+        
+        optimizer = optim.Adam([
+            {'params': model.encoder.parameters(), 'lr': actor_lr},
+            {'params': model.actor_head.parameters(), 'lr': actor_lr},
+            {'params': model.critic_head.parameters(), 'lr': critic_lr}
+        ], eps=1e-5)
         PPO_EPOCHS = config.get("ppo_epochs", 4)
         PPO_CLIP = config.get("ppo_clip", 0.2)
         PPO_ENTROPY_COEF = config.get("ppo_entropy_coef", 0.01)
@@ -219,7 +226,7 @@ def main():
                 
                 next_obs, reward, done, info = train_env.step(action.item())
                 if info.get("board") is not None: max_tile_ep = max(max_tile_ep, int(np.max(info["board"])))
-                rollout.add(s, obs, action, logprob, reward, done, value, l_mask)
+                rollout.add(s, obs, action, logprob, reward, done, value, l_mask, step_in_game=ep_len)
                 
                 obs, ep_return, ep_len = next_obs, ep_return + reward, ep_len + 1
                 
@@ -237,7 +244,7 @@ def main():
             # PPO Update
             with torch.no_grad():
                 _, next_val = model(torch.tensor(obs, dtype=torch.float32, device=DEVICE).unsqueeze(0))
-            b_obs, b_lp, b_act, b_adv, b_ret, b_val, b_msk = rollout.get_batches(
+            b_obs, b_lp, b_act, b_adv, b_ret, b_val, b_msk, b_steps = rollout.get_batches(
                 next_val, torch.tensor([done], device=DEVICE), GAMMA, GAE_LAMBDA
             )
             
@@ -252,27 +259,44 @@ def main():
             
             # LR Decay
             frac = 1.0 - (episode_count / NUM_EPISODES)
-            lr_now = config.get("ppo_lr", 3e-4) * frac
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr_now
+            optimizer.param_groups[0]['lr'] = actor_lr * frac
+            optimizer.param_groups[1]['lr'] = actor_lr * frac
+            optimizer.param_groups[2]['lr'] = critic_lr * frac
+
+            BATCH_SIZE = config.get("batch_size", 256)
+            b_inds = np.arange(PPO_STEPS)
 
             for _ in range(PPO_EPOCHS):
-                _, new_lp, entropy, new_val = model.get_action_and_value(b_obs, b_act, b_msk)
-                ratio = (new_lp - b_lp).exp()
-                
-                pg_loss1 = -mb_adv * ratio
-                pg_loss2 = -mb_adv * torch.clamp(ratio, 1 - PPO_CLIP, 1 + PPO_CLIP)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-                
-                v_loss = 0.5 * F.smooth_l1_loss(new_val.flatten(), b_ret)
-                
-                loss = pg_loss - PPO_ENTROPY_COEF * entropy.mean() + v_loss * PPO_CRITIC_COEF
-                
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-                optimizer.step()
-                loss_history.append(loss.item())
+                np.random.shuffle(b_inds)
+                for start in range(0, PPO_STEPS, BATCH_SIZE):
+                    end = start + BATCH_SIZE
+                    mb_inds = b_inds[start:end]
+
+                    _, new_lp, entropy, new_val = model.get_action_and_value(b_obs[mb_inds], b_act[mb_inds], b_msk[mb_inds])
+                    ratio = (new_lp - b_lp[mb_inds]).exp()
+                    
+                    pg_loss1 = -mb_adv[mb_inds] * ratio
+                    pg_loss2 = -mb_adv[mb_inds] * torch.clamp(ratio, 1 - PPO_CLIP, 1 + PPO_CLIP)
+                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                    
+                    # MSE is MANDATORY because smooth_l1_loss limits gradients to 1.0, failing for massive raw rewards in 2048
+                    v_loss = 0.5 * F.mse_loss(new_val.flatten(), b_ret[mb_inds])
+                    
+                    # --- Dynamic Entropy Regularization ---
+                    mb_steps = b_steps[mb_inds]
+                    step_mean = mb_steps.mean()
+                    step_std = mb_steps.std() + 1e-8
+                    step_z = (mb_steps - step_mean) / step_std
+                    entropy_c2 = (torch.tanh(step_z * 2.0 - 1.0) + 1.0) * 0.4 + 0.2
+                    entropy_loss = -PPO_ENTROPY_COEF * (entropy * entropy_c2).mean()
+                    
+                    loss = pg_loss + entropy_loss + v_loss * PPO_CRITIC_COEF
+                    
+                    optimizer.zero_grad()
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+                    optimizer.step()
+                    loss_history.append(loss.item())
         pbar.close()
 
     global_step = 0
